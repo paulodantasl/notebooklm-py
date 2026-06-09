@@ -1,0 +1,12 @@
+{
+  "8in CMU block": { "unit": "EA", "material": 2.35, "labor": 0.0, "equip": 0.0 },
+  "Mortar (type S)": { "unit": "BAG", "material": 9.50, "labor": 0.0, "equip": 0.0 },
+  "Rebar #5 vertical": { "unit": "LF", "material": 0.85, "labor": 0.0, "equip": 0.0 },
+  "Mason labor": { "unit": "HR", "material": 0.0, "labor": 68.00, "equip": 0.0 },
+  "Concrete 4000psi": { "unit": "CY", "material": 165.00, "labor": 0.0, "equip": 0.0 },
+  "WWF 6x6 mesh": { "unit": "SF", "material": 0.32, "labor": 0.0, "equip": 0.0 },
+  "Concrete labor": { "unit": "HR", "material": 0.0, "labor": 55.00, "equip": 0.0 },
+  "2x4 stud 8ft": { "unit": "EA", "material": 3.75, "labor": 0.0, "equip": 0.0 },
+  "2x4 plate": { "unit": "LF", "material": 0.95, "labor": 0.0, "equip": 0.0 },
+  "Carpenter labor": { "unit": "HR", "material": 0.0, "labor": 62.00, "equip": 0.0 }
+}

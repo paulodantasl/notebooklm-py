@@ -1,0 +1,30 @@
+{
+  "8in CMU wall": {
+    "unit": "SF",
+    "division": "04 - Masonry",
+    "materials": [
+      { "item": "8in CMU block", "unit": "EA", "factor": 1.125, "waste": 0.05 },
+      { "item": "Mortar (type S)", "unit": "BAG", "factor": 0.0125 },
+      { "item": "Rebar #5 vertical", "unit": "LF", "factor": 0.5 },
+      { "item": "Mason labor", "unit": "HR", "factor": 0.05 }
+    ]
+  },
+  "Concrete slab on grade": {
+    "unit": "SF",
+    "division": "03 - Concrete",
+    "materials": [
+      { "item": "Concrete 4000psi", "unit": "CY", "factor": 0.0123, "waste": 0.05 },
+      { "item": "WWF 6x6 mesh", "unit": "SF", "factor": 1.0, "waste": 0.1 },
+      { "item": "Concrete labor", "unit": "HR", "factor": 0.02 }
+    ]
+  },
+  "2x4 wood stud wall": {
+    "unit": "LF",
+    "division": "06 - Wood & Plastics",
+    "materials": [
+      { "item": "2x4 stud 8ft", "unit": "EA", "factor": 0.9 },
+      { "item": "2x4 plate", "unit": "LF", "factor": 3.0 },
+      { "item": "Carpenter labor", "unit": "HR", "factor": 0.08 }
+    ]
+  }
+}
