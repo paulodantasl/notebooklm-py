@@ -1,0 +1,5 @@
+{
+  "Painted gypsum wall": { "material": 1.10, "labor": 2.40, "division": "09 - Finishes" },
+  "Acoustic ceiling tile": { "material": 2.20, "labor": 3.10, "division": "09 - Finishes" },
+  "Light fixture 2x4 LED": { "material": 85.0, "labor": 45.0, "division": "26 - Electrical" }
+}
