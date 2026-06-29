@@ -30,6 +30,12 @@ except ImportError as exc:  # pragma: no cover - exercised only without the dep
         "PyMuPDF is required for extraction. Install with: pip install pymupdf"
     ) from exc
 
+from .geometry import (
+    ellipse_perimeter,
+    polygon_area as _polygon_area,
+    polygon_perimeter as _polygon_perimeter,
+    seg_length as _seg_length,
+)
 from .model import KIND_UNIT, TO_FEET, Calibration, Measurement, Project, normalize_unit
 
 _CAL_RE = re.compile(r"CAL\s*=\s*([0-9]*\.?[0-9]+)\s*([a-zA-Z'\"]*)", re.IGNORECASE)
@@ -60,35 +66,6 @@ def _unit_to_feet(token: str, default_unit: str) -> float:
     if low in TO_FEET:
         return TO_FEET[low]
     return TO_FEET[normalize_unit(default_unit)]
-
-
-def _seg_length(points: list[tuple[float, float]]) -> float:
-    total = 0.0
-    for (x1, y1), (x2, y2) in zip(points, points[1:]):
-        total += math.hypot(x2 - x1, y2 - y1)
-    return total
-
-
-def _polygon_area(points: list[tuple[float, float]]) -> float:
-    """Shoelace area of a closed polygon (auto-closes)."""
-    if len(points) < 3:
-        return 0.0
-    pts = list(points)
-    if pts[0] != pts[-1]:
-        pts.append(pts[0])
-    s = 0.0
-    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
-        s += x1 * y2 - x2 * y1
-    return abs(s) / 2.0
-
-
-def _polygon_perimeter(points: list[tuple[float, float]]) -> float:
-    if len(points) < 2:
-        return 0.0
-    pts = list(points)
-    if pts[0] != pts[-1]:
-        pts.append(pts[0])
-    return _seg_length(pts)
 
 
 def parse_scale_directive(text: str, default_unit: str) -> Optional[float]:
@@ -136,8 +113,17 @@ def _is_rect_or_ellipse(type_name: str) -> bool:
     return type_name in ("Square", "Circle")
 
 
-def extract_project(pdf_path: str, unit: str = "ft") -> Project:
-    """Open a PDF, read every markup annotation, return a populated Project."""
+def extract_project(
+    pdf_path: str,
+    unit: str = "ft",
+    manual_calibrations: Optional[dict[str, float]] = None,
+) -> Project:
+    """Open a PDF, read every markup annotation, return a populated Project.
+
+    ``manual_calibrations`` maps a sheet label (e.g. ``"p1"``) to a
+    points-per-foot value and takes precedence over any ``CAL=`` line found in
+    the PDF — this is how a manually calibrated sheet survives re-extraction.
+    """
     project = Project(pdf_path=str(pdf_path), unit=normalize_unit(unit))
     doc = fitz.open(pdf_path)
     try:
@@ -145,6 +131,12 @@ def extract_project(pdf_path: str, unit: str = "ft") -> Project:
         for page in doc:
             sheet = _sheet_label(page)
             _collect_calibration(page, sheet, project)
+        # Manual calibrations override anything detected in the PDF.
+        for sheet, ppf in (manual_calibrations or {}).items():
+            if ppf and float(ppf) > 0:
+                project.calibrations[sheet] = Calibration(
+                    sheet=sheet, points_per_foot=float(ppf), method="manual"
+                )
         # Second pass: measurements.
         counter = 0
         for page in doc:
@@ -271,7 +263,7 @@ def _build_measurement(
         w, h = abs(r.x1 - r.x0), abs(r.y1 - r.y0)
         if type_name == "Circle":
             raw_area = math.pi * (w / 2.0) * (h / 2.0)
-            raw_perim = math.pi * (3 * (w / 2 + h / 2) - math.sqrt((3 * w / 2 + h / 2) * (w / 2 + 3 * h / 2)))
+            raw_perim = ellipse_perimeter(w, h)
         else:
             raw_area = w * h
             raw_perim = 2 * (w + h)

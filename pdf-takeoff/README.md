@@ -32,6 +32,17 @@ PDF markups ──extract──> measurements ──rollup──> quantity summa
 | `report.py` | Markdown / CSV output |
 | `mcp_server.py` | Tools Claude calls in Claude Desktop |
 
+## Two ways to measure
+
+1. **Browser measuring UI** (`web/`) — draw measurements directly on the PDF,
+   see live quantities, export a `*.takeoff.json` that the pipeline ingests. No
+   separate markup tool needed. See [Measure in the browser](#measure-in-the-browser).
+2. **Extract from existing PDF markups** — mark up in Bluebeam / Adobe / Preview
+   and let `extract.py` read the annotation geometry. See the convention below.
+
+Both routes feed the **same** quantity/estimate code and produce identical
+numbers, because geometry is always stored as vectors + a per-sheet scale.
+
 ## Markup convention
 
 Draw these in your PDF tool, then save:
@@ -89,13 +100,42 @@ Claude will call `load_project`, `quantity_summary`, `load_assemblies`,
 
 | Tool | Purpose |
 |---|---|
-| `load_project(pdf_path, unit)` | Extract markups; report sheets, calibration, warnings |
+| `load_project(pdf_path, unit)` | Extract PDF markups; report sheets, calibration, warnings |
+| `load_measurements(json_path)` | Load a `*.takeoff.json` exported by the browser UI |
 | `list_measurements(sheet, condition)` | Inspect individual measurements |
 | `quantity_summary(fmt)` | Executive QTO by condition + division (md/csv/json) |
 | `set_waste(condition, pct)` | Per-condition waste/allowance |
 | `set_calibration(sheet, real, points, unit)` | Manual scale when no CAL line |
 | `load_assemblies / load_costdb / load_unit_prices` | Load editable JSON catalogs |
 | `estimate(markup_pct, fmt)` | Priced estimate with OH&P |
+
+## Measure in the browser
+
+A self-contained PDF.js app under `web/` lets you measure on the plan and watch
+quantities update live, then export JSON for the pipeline.
+
+```bash
+cd pdf-takeoff/web
+python -m http.server 8000
+# open http://localhost:8000
+```
+
+Workflow:
+
+1. **Open PDF** — drag in your plan set (renders locally; nothing is uploaded).
+2. **Calibrate** (`C`) — click two points across a known dimension, type its
+   real length (`10ft`, `20'`, `3.5m`). Each sheet/page is calibrated separately.
+3. **Measure** — pick a tool and type the *condition* in the sidebar first:
+   - **Linear** (`L`) — click vertices, double-click / `Enter` to finish → LF
+   - **Area** (`A`) — click a polygon, double-click / `Enter` to finish → SF
+   - **Count** (`N`) — click each item → EA
+4. **Export** → `something.takeoff.json`.
+5. In Claude: `load_measurements("/path/something.takeoff.json")` → then
+   `quantity_summary()` / `estimate()` exactly as with the markup route.
+
+Shortcuts: `V` select · `C/L/A/N` tools · `Enter` finish · `Backspace` undo
+vertex · `Del` delete selected · `Esc` cancel. The PDF.js library is loaded from
+a CDN for rendering only; all measuring and data stay in your browser.
 
 ## Catalogs
 
@@ -108,10 +148,11 @@ Editable JSON under `data/` (examples provided):
 
 ## Status & roadmap
 
-MVP (this folder) covers the full markup→estimate path with the
-extract-from-markups workflow. Natural next steps: multi-sheet calibration UX,
-a PDF.js measuring UI, color/layer→condition mapping, and assembly authoring
-helpers.
+Covers the full measure→estimate path two ways: the browser measuring UI and
+extract-from-markups, both feeding shared quantity/estimate code. Natural next
+steps: snapping/ortho constraints and vertex editing in the UI, color/layer →
+condition auto-mapping for imported markups, assembly authoring helpers, and
+round-tripping UI measurements back into the PDF as annotations.
 
 ## License
 

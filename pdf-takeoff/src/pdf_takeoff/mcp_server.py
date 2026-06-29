@@ -26,6 +26,7 @@ from mcp.server.fastmcp import FastMCP
 from .catalog import division_map_from_assemblies, load_json
 from .estimate import build_estimate
 from .extract import extract_project
+from .ingest import project_from_export
 from .model import Project
 from .quantities import rollup, summary_to_rows
 from .report import estimate_markdown, summary_csv, summary_markdown
@@ -36,6 +37,9 @@ mcp = FastMCP("pdf-takeoff")
 @dataclass
 class _State:
     project: Optional[Project] = None
+    pdf_path: Optional[str] = None  # set only for the PDF-extraction route
+    unit: str = "ft"
+    manual_calibrations: dict[str, float] = field(default_factory=dict)
     assemblies: dict[str, Any] = field(default_factory=dict)
     costdb: dict[str, Any] = field(default_factory=dict)
     unit_prices: dict[str, Any] = field(default_factory=dict)
@@ -47,8 +51,25 @@ STATE = _State()
 
 def _require_project() -> Project:
     if STATE.project is None:
-        raise ValueError("No project loaded. Call load_project(pdf_path) first.")
+        raise ValueError(
+            "No project loaded. Call load_project(pdf_path) or load_measurements(json_path) first."
+        )
     return STATE.project
+
+
+def _project_summary(project: Project) -> str:
+    summary = {
+        "pdf_path": project.pdf_path,
+        "sheets": project.sheets(),
+        "calibrations": {
+            s: {"points_per_foot": round(c.points_per_foot, 4), "method": c.method}
+            for s, c in project.calibrations.items()
+        },
+        "conditions": project.conditions(),
+        "measurement_count": len(project.measurements),
+        "warnings": project.warnings,
+    }
+    return json.dumps(summary, indent=2)
 
 
 @mcp.tool()
@@ -62,20 +83,28 @@ def load_project(pdf_path: str, unit: str = "ft") -> str:
     Returns a JSON summary: sheets, calibration status, condition list, counts,
     and any warnings (e.g. measurements skipped for missing calibration).
     """
-    project = extract_project(pdf_path, unit=unit)
+    if pdf_path != STATE.pdf_path:
+        STATE.manual_calibrations = {}  # stale manual cals don't carry to a new file
+    STATE.pdf_path = pdf_path
+    STATE.unit = unit
+    project = extract_project(pdf_path, unit=unit, manual_calibrations=STATE.manual_calibrations)
     STATE.project = project
-    summary = {
-        "pdf_path": project.pdf_path,
-        "sheets": project.sheets(),
-        "calibrations": {
-            s: {"points_per_foot": round(c.points_per_foot, 4), "method": c.method}
-            for s, c in project.calibrations.items()
-        },
-        "conditions": project.conditions(),
-        "measurement_count": len(project.measurements),
-        "warnings": project.warnings,
-    }
-    return json.dumps(summary, indent=2)
+    return _project_summary(project)
+
+
+@mcp.tool()
+def load_measurements(json_path: str) -> str:
+    """Load a measurements JSON exported by the web measuring UI as the active project.
+
+    The export carries raw vector geometry (in PDF points) plus per-sheet
+    calibration; quantities are computed with the same geometry helpers the PDF
+    markup extractor uses, so both routes agree exactly.
+    """
+    data = load_json(json_path)
+    project = project_from_export(data)
+    STATE.project = project
+    STATE.pdf_path = None  # no source PDF to re-extract from
+    return _project_summary(project)
 
 
 @mcp.tool()
@@ -119,16 +148,55 @@ def set_waste(condition: str, waste_pct: float) -> str:
 def set_calibration(sheet: str, real_length: float, points_length: float, unit: str = "ft") -> str:
     """Manually calibrate a sheet when no CAL line was drawn.
 
-    Provide a real-world length and the matching distance in PDF points.
+    Provide a real-world length and the matching distance in PDF points. For a
+    PDF-extraction project this re-extracts with the manual scale applied, so
+    measurements that were previously skipped for lack of calibration are picked
+    up and existing ones are recomputed.
     """
     from .model import Calibration, TO_FEET, normalize_unit
 
+    if real_length <= 0 or points_length <= 0:
+        raise ValueError("real_length and points_length must both be positive.")
+
     ppf = points_length / (real_length * TO_FEET[normalize_unit(unit)])
+    STATE.manual_calibrations[sheet] = ppf
+
+    if STATE.pdf_path is not None:
+        STATE.project = extract_project(
+            STATE.pdf_path, unit=STATE.unit, manual_calibrations=STATE.manual_calibrations
+        )
+        return (
+            f"Sheet '{sheet}' calibrated at {ppf:.4f} points/ft; PDF re-extracted "
+            f"and measurements recomputed."
+        )
+
+    # No source PDF (web-import project): set the scale and recompute in place
+    # from each measurement's stored raw geometry.
     project = _require_project()
     project.calibrations[sheet] = Calibration(
         sheet=sheet, points_per_foot=ppf, method="manual", source_unit=unit
     )
-    return f"Sheet '{sheet}' calibrated: {ppf:.4f} points/ft (re-run load_project to apply)."
+    recomputed = _recompute_sheet(project, sheet, ppf)
+    return (
+        f"Sheet '{sheet}' calibrated at {ppf:.4f} points/ft; recomputed {recomputed} "
+        f"measurement(s). Measurements dropped on import for missing scale cannot be "
+        f"recovered — re-export from the measuring UI with the sheet calibrated."
+    )
+
+
+def _recompute_sheet(project: Project, sheet: str, ppf: float) -> int:
+    """Recompute linear/area quantities for a sheet from stored raw geometry."""
+    count = 0
+    for m in project.measurements:
+        if m.sheet != sheet or m.raw_points is None:
+            continue
+        if m.kind == "linear":
+            m.quantity = m.raw_points / ppf
+            count += 1
+        elif m.kind == "area":
+            m.quantity = m.raw_points / (ppf * ppf)
+            count += 1
+    return count
 
 
 @mcp.tool()

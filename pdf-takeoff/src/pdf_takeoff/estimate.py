@@ -9,6 +9,18 @@ Two modes, both driven by editable JSON catalogs:
 
 The assembly catalog also supplies the CSI ``division`` used by the executive
 summary, so quantities and dollars stay aligned.
+
+Waste is modelled in two intentional, compounding layers:
+
+* **Condition waste** (``set_waste`` / ``rollup``) is a measurement/design
+  allowance applied to the take-off quantity itself — it inflates *every* item
+  derived from that condition.
+* **Item waste** (``materials[].waste`` in an assembly) is per-material cutting
+  loss applied on top, only in assembly mode.
+
+So an assembly item's quantity is ``qty * (1 + condition_waste) * factor *
+(1 + item_waste)``. Unit-price mode has no items, so only condition waste
+applies there.
 """
 
 from __future__ import annotations
@@ -136,6 +148,8 @@ def build_estimate(
             else:
                 um, ul, ue = float(price), 0.0, 0.0
                 division = t.division or "Unassigned"
+            if (um, ul, ue) == (0.0, 0.0, 0.0):
+                est.warnings.append(f"Unit price for '{t.condition}' is zero.")
             est.lines.append(
                 EstimateLine(
                     condition=t.condition,

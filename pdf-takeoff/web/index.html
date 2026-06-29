@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF Takeoff — Measuring</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <strong class="brand">PDF Takeoff</strong>
+
+    <label class="file-btn">
+      Open PDF
+      <input id="file-input" type="file" accept="application/pdf" hidden />
+    </label>
+
+    <span class="group" role="radiogroup" aria-label="Tool">
+      <button class="tool" data-tool="select" title="Select / move (V)">Select</button>
+      <button class="tool" data-tool="calibrate" title="Calibrate scale (C)">Calibrate</button>
+      <button class="tool" data-tool="linear" title="Linear measure (L)">Linear</button>
+      <button class="tool" data-tool="area" title="Area measure (A)">Area</button>
+      <button class="tool" data-tool="count" title="Count (N)">Count</button>
+    </span>
+
+    <span class="group">
+      <button id="finish-btn" title="Finish current shape (Enter)">Finish</button>
+      <button id="undo-btn" title="Undo last vertex (Backspace)">Undo pt</button>
+      <button id="delete-btn" title="Delete selected (Del)">Delete</button>
+    </span>
+
+    <span class="group pager">
+      <button id="prev-page" title="Previous sheet">◀</button>
+      <span id="page-label">— / —</span>
+      <button id="next-page" title="Next sheet">▶</button>
+    </span>
+
+    <span class="group">
+      <button id="zoom-out" title="Zoom out">−</button>
+      <span id="zoom-label">150%</span>
+      <button id="zoom-in" title="Zoom in">+</button>
+    </span>
+
+    <span class="group">
+      <button id="export-btn" title="Export measurements JSON">Export</button>
+      <label class="file-btn small">
+        Import
+        <input id="import-input" type="file" accept="application/json" hidden />
+      </label>
+    </span>
+
+    <span id="cal-status" class="cal-status" aria-live="polite">No sheet calibrated</span>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Condition</h2>
+        <input id="condition-input" list="condition-list" placeholder="e.g. 8in CMU wall" />
+        <datalist id="condition-list"></datalist>
+        <span class="color-chip" id="condition-color" title="Color for this condition"></span>
+        <button id="apply-condition" class="full" title="Apply to selected measurement">
+          Apply to selected
+        </button>
+      </section>
+
+      <section class="panel">
+        <h2>Live quantities</h2>
+        <div id="quantities" class="quantities">
+          <p class="muted">Load a PDF, calibrate a sheet, then measure.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Measurements <span id="meas-count" class="muted"></span></h2>
+        <div id="measurement-list" class="measurement-list"></div>
+      </section>
+    </aside>
+
+    <section class="stage" id="stage">
+      <div id="canvas-wrap" class="canvas-wrap">
+        <canvas id="pdf-canvas"></canvas>
+        <svg id="overlay" class="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <p id="empty-hint" class="empty-hint">Open a PDF to begin.</p>
+    </section>
+  </main>
+
+  <!-- PDF.js (pinned). The library and worker are loaded from a CDN; the app
+       itself runs entirely in your browser — no plans are uploaded anywhere. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

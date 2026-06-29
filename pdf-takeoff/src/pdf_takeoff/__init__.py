@@ -5,6 +5,7 @@ Pipeline: extract markup geometry -> calibrate -> quantities -> estimate.
 
 from .estimate import Estimate, build_estimate
 from .extract import extract_project
+from .ingest import project_from_export
 from .model import Calibration, Measurement, Project
 from .quantities import QuantitySummary, rollup
 
@@ -15,6 +16,7 @@ __all__ = [
     "QuantitySummary",
     "Estimate",
     "extract_project",
+    "project_from_export",
     "rollup",
     "build_estimate",
 ]
