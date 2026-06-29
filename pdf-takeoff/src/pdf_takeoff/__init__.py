@@ -3,6 +3,7 @@
 Pipeline: extract markup geometry -> calibrate -> quantities -> estimate.
 """
 
+from .annotate import write_annotations
 from .estimate import Estimate, build_estimate
 from .extract import extract_project
 from .ingest import project_from_export
@@ -17,6 +18,7 @@ __all__ = [
     "Estimate",
     "extract_project",
     "project_from_export",
+    "write_annotations",
     "rollup",
     "build_estimate",
 ]

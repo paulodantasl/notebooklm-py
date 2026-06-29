@@ -17,6 +17,7 @@
     m: 3.280839895, cm: 0.032808399, mm: 0.0032808399,
   };
   const UNIT_ABBR = { linear: "LF", area: "SF", count: "EA" };
+  const SNAP_PX = 10; // snap radius in screen pixels (zoom-independent)
 
   const state = {
     pdfDoc: null,
@@ -35,6 +36,9 @@
     draft: null, // {kind, points:[[x,y]]}
     cursorPdf: null,
     selectedId: null,
+    drag: null, // {id, vidx} while dragging a vertex handle
+    suppressClick: false, // swallow the click that ends a drag
+    snapView: null, // [x,y] in view px when the cursor is snapped
     pdfName: "",
     idSeq: 0,
   };
@@ -45,7 +49,8 @@
   const overlay = $("overlay");
   const committedLayer = mkSvg("g");
   const draftLayer = mkSvg("g");
-  overlay.append(committedLayer, draftLayer);
+  const snapLayer = mkSvg("g");
+  overlay.append(committedLayer, draftLayer, snapLayer);
 
   // ---------------------------------------------------------------- geometry
   const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -115,6 +120,59 @@
     let x = 0, y = 0;
     for (const p of pts) { const v = toView(p); x += v[0]; y += v[1]; }
     return [x / pts.length, y / pts.length];
+  }
+
+  // ------------------------------------------------------- snapping & ortho
+  // Snap to the nearest existing/draft vertex within SNAP_PX screen pixels.
+  function snapPoint(pdfPt, exclude) {
+    if (!state.viewport) return { pt: pdfPt, snapped: false };
+    const cv = toView(pdfPt);
+    let best = null, bestD = SNAP_PX;
+    const consider = (p) => {
+      const v = toView(p);
+      const d = Math.hypot(v[0] - cv[0], v[1] - cv[1]);
+      if (d < bestD) { bestD = d; best = p; }
+    };
+    for (const m of state.measurements) {
+      if (m.sheet !== sheetKey()) continue;
+      m.points.forEach((p, i) => {
+        if (exclude && exclude.id === m.id && exclude.vidx === i) return;
+        consider(p);
+      });
+    }
+    if (state.draft) state.draft.points.forEach(consider);
+    return best ? { pt: [best[0], best[1]], snapped: true } : { pt: pdfPt, snapped: false };
+  }
+
+  // Constrain a point to 45-degree increments from an anchor (Shift / ortho).
+  function ortho(anchor, pt) {
+    const dx = pt[0] - anchor[0], dy = pt[1] - anchor[1];
+    const r = Math.hypot(dx, dy);
+    if (r === 0) return pt;
+    const step = Math.PI / 4;
+    const a = Math.round(Math.atan2(dy, dx) / step) * step;
+    return [anchor[0] + r * Math.cos(a), anchor[1] + r * Math.sin(a)];
+  }
+
+  // Resolve a raw cursor point for drawing: ortho first (Shift), then snap wins.
+  function resolveDrawPoint(rawPdf, shiftKey) {
+    let p = rawPdf;
+    const anchor = state.draft && state.draft.points.length
+      ? state.draft.points[state.draft.points.length - 1]
+      : null;
+    if (shiftKey && anchor) p = ortho(anchor, p);
+    const snap = snapPoint(p);
+    state.snapView = snap.snapped ? toView(snap.pt) : null;
+    return snap.pt;
+  }
+
+  function renderSnap() {
+    clearLayer(snapLayer);
+    if (!state.snapView) return;
+    snapLayer.appendChild(mkSvg("circle", {
+      cx: state.snapView[0], cy: state.snapView[1], r: 7,
+      fill: "none", stroke: "#fff", "stroke-width": 2, "pointer-events": "none",
+    }));
   }
 
   // ---------------------------------------------------------------- rendering
@@ -197,12 +255,24 @@
         ? m.condition + " (no scale)"
         : `${m.condition} · ${fmt(q)} ${UNIT_ABBR[m.kind]}`;
       committedLayer.appendChild(label);
+
+      // draggable vertex handles for the selected measurement (select tool only)
+      if (selected && state.tool === "select") {
+        m.points.forEach((p, i) => {
+          const v = toView(p);
+          const h = mkSvg("circle", { cx: v[0], cy: v[1], r: 5, class: "m-handle" });
+          h.dataset.id = m.id;
+          h.dataset.vidx = i;
+          h.addEventListener("mousedown", onHandleDown);
+          committedLayer.appendChild(h);
+        });
+      }
     }
   }
 
   function drawDraft() {
     clearLayer(draftLayer);
-    if (!state.draft || !state.viewport) return;
+    if (!state.draft || !state.viewport) { state.snapView = null; renderSnap(); return; }
     const d = state.draft;
     const live = state.cursorPdf ? d.points.concat([state.cursorPdf]) : d.points;
     const color = d.kind === "calibrate" ? "#ffd166" : colorFor(state.currentCondition);
@@ -219,6 +289,7 @@
       const v = toView(p);
       draftLayer.appendChild(mkSvg("circle", { cx: v[0], cy: v[1], r: 3.5, fill: color, class: "m-vertex" }));
     }
+    renderSnap();
   }
 
   // ---------------------------------------------------------------- interaction
@@ -237,9 +308,17 @@
     renderSidebar();
   }
 
+  // Begin dragging a vertex handle (select tool).
+  function onHandleDown(e) {
+    if (state.tool !== "select") return;
+    e.stopPropagation();
+    e.preventDefault();
+    state.drag = { id: e.currentTarget.dataset.id, vidx: Number(e.currentTarget.dataset.vidx) };
+  }
+
   overlay.addEventListener("click", (e) => {
     if (!state.viewport) return;
-    const pdf = eventToPdf(e);
+    if (state.suppressClick) { state.suppressClick = false; return; }
     const t = state.tool;
 
     if (t === "select") {
@@ -249,28 +328,51 @@
       return;
     }
     if (t === "count") {
-      const m = newMeasurement("count", [pdf]);
+      const snap = snapPoint(eventToPdf(e));
+      const m = newMeasurement("count", [snap.pt]);
       state.measurements.push(m);
       commitChange();
       return;
     }
     if (t === "calibrate") {
+      // Calibration is a raw two-point pick (no snapping/ortho).
       if (!state.draft) state.draft = { kind: "calibrate", points: [] };
-      state.draft.points.push(pdf);
+      state.draft.points.push(eventToPdf(e));
       if (state.draft.points.length === 2) finishCalibration();
       else drawDraft();
       return;
     }
-    // linear / area
+    // linear / area — snap + ortho applied
     if (!state.draft || state.draft.kind !== t) state.draft = { kind: t, points: [] };
-    state.draft.points.push(pdf);
+    state.draft.points.push(resolveDrawPoint(eventToPdf(e), e.shiftKey));
+    state.snapView = null;
     drawDraft();
   });
 
   overlay.addEventListener("mousemove", (e) => {
-    if (!state.viewport || !state.draft) return;
-    state.cursorPdf = eventToPdf(e);
+    if (!state.viewport) return;
+
+    if (state.drag) {
+      const snap = snapPoint(eventToPdf(e), state.drag);
+      state.snapView = snap.snapped ? toView(snap.pt) : null;
+      const m = state.measurements.find((x) => x.id === state.drag.id);
+      if (m) { m.points[state.drag.vidx] = snap.pt; drawCommitted(); renderSnap(); }
+      return;
+    }
+
+    if (!state.draft) return;
+    if (state.draft.kind === "calibrate") state.cursorPdf = eventToPdf(e);
+    else state.cursorPdf = resolveDrawPoint(eventToPdf(e), e.shiftKey);
     drawDraft();
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!state.drag) return;
+    state.drag = null;
+    state.suppressClick = true; // ignore the click that terminates the drag
+    state.snapView = null;
+    clearLayer(snapLayer);
+    commitChange();
   });
 
   overlay.addEventListener("dblclick", (e) => {

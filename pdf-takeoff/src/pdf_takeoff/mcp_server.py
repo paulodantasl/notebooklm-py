@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from .annotate import write_annotations
 from .catalog import division_map_from_assemblies, load_json
 from .estimate import build_estimate
 from .extract import extract_project
@@ -261,6 +262,21 @@ def estimate(markup_pct: float = 0.0, fmt: str = "markdown") -> str:
             indent=2,
         )
     return estimate_markdown(est)
+
+
+@mcp.tool()
+def write_annotated_pdf(
+    json_path: str, pdf_in: str, pdf_out: str, include_calibration: bool = True
+) -> str:
+    """Write a takeoff JSON (from the web UI) back into a PDF as markup annotations.
+
+    Produces a PDF whose linear/area/count measurements open in Bluebeam / Adobe /
+    Preview and re-extract to identical quantities. A 1-ft scale bar (``CAL=1ft``)
+    is added per calibrated sheet unless ``include_calibration`` is False.
+    """
+    data = load_json(json_path)
+    out = write_annotations(pdf_in, data, pdf_out, include_calibration=include_calibration)
+    return f"Wrote annotated PDF to {out}"
 
 
 def main() -> None:

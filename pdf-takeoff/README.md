@@ -108,6 +108,7 @@ Claude will call `load_project`, `quantity_summary`, `load_assemblies`,
 | `set_calibration(sheet, real, points, unit)` | Manual scale when no CAL line |
 | `load_assemblies / load_costdb / load_unit_prices` | Load editable JSON catalogs |
 | `estimate(markup_pct, fmt)` | Priced estimate with OH&P |
+| `write_annotated_pdf(json_path, pdf_in, pdf_out)` | Write UI measurements back into a PDF as Bluebeam/Adobe-readable markups |
 
 ## Measure in the browser
 
@@ -129,13 +130,35 @@ Workflow:
    - **Linear** (`L`) — click vertices, double-click / `Enter` to finish → LF
    - **Area** (`A`) — click a polygon, double-click / `Enter` to finish → SF
    - **Count** (`N`) — click each item → EA
+   - **Snapping** — the cursor snaps to nearby existing/draft vertices (white
+     ring), so shared corners and closed loops line up exactly.
+   - **Ortho** — hold **Shift** while drawing to lock the segment to 45°
+     increments (horizontal / vertical / diagonal).
+   - **Edit** — with **Select** (`V`), click a measurement and drag its vertex
+     handles (they snap too); `Del` removes the selected measurement.
 4. **Export** → `something.takeoff.json`.
 5. In Claude: `load_measurements("/path/something.takeoff.json")` → then
    `quantity_summary()` / `estimate()` exactly as with the markup route.
 
-Shortcuts: `V` select · `C/L/A/N` tools · `Enter` finish · `Backspace` undo
-vertex · `Del` delete selected · `Esc` cancel. The PDF.js library is loaded from
-a CDN for rendering only; all measuring and data stay in your browser.
+Shortcuts: `V` select · `C/L/A/N` tools · `Shift` ortho · `Enter` finish ·
+`Backspace` undo vertex · `Del` delete selected · `Esc` cancel. The PDF.js
+library is loaded from a CDN for rendering only; all measuring and data stay in
+your browser.
+
+### Export back to a marked-up PDF
+
+Turn a takeoff into a PDF whose measurements open in Bluebeam / Adobe / Preview
+(and re-extract to identical quantities):
+
+```python
+from pdf_takeoff import write_annotations
+import json
+write_annotations("plans.pdf", json.load(open("plans.takeoff.json")), "plans.marked.pdf")
+```
+
+or in Claude: `write_annotated_pdf("plans.takeoff.json", "plans.pdf", "plans.marked.pdf")`.
+Each condition gets a consistent color; a thin `CAL=1ft` scale bar per sheet
+makes the output self-describing.
 
 ## Catalogs
 
@@ -148,11 +171,11 @@ Editable JSON under `data/` (examples provided):
 
 ## Status & roadmap
 
-Covers the full measure→estimate path two ways: the browser measuring UI and
-extract-from-markups, both feeding shared quantity/estimate code. Natural next
-steps: snapping/ortho constraints and vertex editing in the UI, color/layer →
-condition auto-mapping for imported markups, assembly authoring helpers, and
-round-tripping UI measurements back into the PDF as annotations.
+Covers the full measure→estimate→back-to-PDF loop two ways (browser UI and
+extract-from-markups), with shared quantity/estimate code, snapping + ortho +
+vertex editing in the UI, and round-trip annotation export. Natural next steps:
+color/layer → condition auto-mapping for imported markups, assembly authoring
+helpers, multi-PDF projects, and a cut/cope allowance library.
 
 ## License
 
